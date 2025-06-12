@@ -17,7 +17,7 @@ from vllm.distributed import (divide, get_tensor_model_parallel_rank,
 from vllm.logger import init_logger
 from vllm.model_executor.layers.quantization.base_config import (
     QuantizationConfig, QuantizeMethodBase)
-from vllm.model_executor.layers.utils import dispatch_unquantized_gemm, dispatch_linear_func
+from vllm.model_executor.layers.utils import dispatch_unquantized_gemm
 # yapf: disable
 from vllm.model_executor.parameter import (BasevLLMParameter,
                                            BlockQuantScaleParameter,
@@ -27,6 +27,7 @@ from vllm.model_executor.parameter import (BasevLLMParameter,
                                            RowvLLMParameter)
 # yapf: enable
 from vllm.model_executor.utils import set_weight_attrs
+from vllm.utils import direct_register_custom_op
 
 logger = init_logger(__name__)
 
@@ -51,6 +52,36 @@ WEIGHT_LOADER_V2_SUPPORTED = [
     "QuarkLinearMethod",
     "ModelOptNvFp4LinearMethod",
 ]
+
+
+def tgemm_mm(input: torch.Tensor,
+             weight: torch.Tensor,
+             bias: Optional[torch.Tensor] = None,
+             transposed: bool = False) -> torch.Tensor:
+    from aiter.tuned_gemm import tgemm
+    return tgemm.mm(input, weight, bias, transposed=transposed)
+
+
+def tgemm_mm_fake(input: torch.Tensor,
+                  weight: torch.Tensor,
+                  bias: Optional[torch.Tensor] = None,
+                  transposed: bool = False) -> torch.Tensor:
+    return torch.empty(input.shape[0],
+                       weight.shape[0] if not transposed else weight.shape[1],
+                       device=input.device,
+                       dtype=input.dtype)
+
+
+direct_register_custom_op(op_name="tgemm_mm",
+                          op_func=tgemm_mm,
+                          mutates_args=[],
+                          fake_impl=tgemm_mm_fake)
+
+
+def dispatch_linear_func():
+    # if envs.VLLM_ROCM_USE_AITER_LINEAR:
+    return torch.ops.vllm.tgemm_mm
+    # return F.linear
 
 
 def adjust_bitblas_shard(param, shard_size, shard_offset):

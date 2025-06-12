@@ -96,31 +96,9 @@ def dispatch_unquantized_gemm() -> Callable[..., torch.Tensor]:
         return rocm_unquantized_gemm
     return torch.nn.functional.linear
 
-def tgemm_mm(input: torch.Tensor,
-             weight: torch.Tensor,
-             bias: Optional[torch.Tensor] = None,
-             transposed: bool = False) -> torch.Tensor:
-    from aiter.tuned_gemm import tgemm
-    return tgemm.mm(input, weight, bias, transposed=transposed)
-
-
-def tgemm_mm_fake(input: torch.Tensor,
-                  weight: torch.Tensor,
-                  bias: Optional[torch.Tensor] = None,
-                  transposed: bool = False) -> torch.Tensor:
-    return torch.empty(input.shape[0],
-                       weight.shape[0] if not transposed else weight.shape[1],
-                       device=input.device,
-                       dtype=input.dtype)
-
-
-direct_register_custom_op(op_name="tgemm_mm",
-                          op_func=tgemm_mm,
-                          mutates_args=[],
-                          fake_impl=tgemm_mm_fake)
-
 
 def dispatch_linear_func():
+    return torch.ops.vllm.tgemm_mm
     if current_platform.is_rocm():
         if envs.VLLM_ROCM_USE_AITER_LINEAR:
             raise Exception(

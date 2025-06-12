@@ -2911,6 +2911,7 @@ def is_torch_equal_or_newer(target: str) -> bool:
     Returns:
         Whether the condition meets.
     """
+    return str(torch.__version__) >= target
     try:
         torch_version = version.parse(str(torch.__version__))
         return torch_version >= version.parse(target)
