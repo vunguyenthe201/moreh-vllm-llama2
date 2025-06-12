@@ -17,7 +17,7 @@ from vllm.distributed import (divide, get_tensor_model_parallel_rank,
 from vllm.logger import init_logger
 from vllm.model_executor.layers.quantization.base_config import (
     QuantizationConfig, QuantizeMethodBase)
-from vllm.model_executor.layers.utils import dispatch_unquantized_gemm
+from vllm.model_executor.layers.utils import dispatch_unquantized_gemm, dispatch_linear_func
 # yapf: disable
 from vllm.model_executor.parameter import (BasevLLMParameter,
                                            BlockQuantScaleParameter,
@@ -200,7 +200,7 @@ class UnquantizedLinearMethod(LinearMethodBase):
               x: torch.Tensor,
               bias: Optional[torch.Tensor] = None) -> torch.Tensor:
 
-        return dispatch_unquantized_gemm()(x, layer.weight, bias)
+        return dispatch_linear_func()(x, layer.weight, bias)
 
 
 class LinearBase(torch.nn.Module):

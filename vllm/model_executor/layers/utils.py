@@ -5,9 +5,11 @@ from typing import Callable, Optional
 
 import torch
 
+from vllm import envs
 from vllm import _custom_ops as ops
 from vllm import envs
 from vllm.platforms import current_platform
+from vllm.utils import direct_register_custom_op
 
 
 def get_token_bin_counts_and_mask(
@@ -92,4 +94,38 @@ def rocm_unquantized_gemm(x: torch.Tensor,
 def dispatch_unquantized_gemm() -> Callable[..., torch.Tensor]:
     if current_platform.is_rocm():
         return rocm_unquantized_gemm
+    return torch.nn.functional.linear
+
+def tgemm_mm(input: torch.Tensor,
+             weight: torch.Tensor,
+             bias: Optional[torch.Tensor] = None,
+             transposed: bool = False) -> torch.Tensor:
+    from aiter.tuned_gemm import tgemm
+    return tgemm.mm(input, weight, bias, transposed=transposed)
+
+
+def tgemm_mm_fake(input: torch.Tensor,
+                  weight: torch.Tensor,
+                  bias: Optional[torch.Tensor] = None,
+                  transposed: bool = False) -> torch.Tensor:
+    return torch.empty(input.shape[0],
+                       weight.shape[0] if not transposed else weight.shape[1],
+                       device=input.device,
+                       dtype=input.dtype)
+
+
+direct_register_custom_op(op_name="tgemm_mm",
+                          op_func=tgemm_mm,
+                          mutates_args=[],
+                          fake_impl=tgemm_mm_fake)
+
+
+def dispatch_linear_func():
+    if current_platform.is_rocm():
+        if envs.VLLM_ROCM_USE_AITER_LINEAR:
+            raise Exception(
+                "Aiter linear is not supported on ROCm platform yet.")
+            return torch.ops.vllm.tgemm_mm
+        else:
+            return rocm_unquantized_gemm
     return torch.nn.functional.linear
